@@ -196,3 +196,6 @@ Openshift console is configured to share modules with its dynamic plugins (conso
 ## Troubleshooting
 
 For troubleshooting common issues, please see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+
+# Feature Chnage
