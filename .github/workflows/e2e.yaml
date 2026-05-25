@@ -28,7 +28,7 @@ jobs:
 
       - name: Install oinc
         run: |
-          OINC_VERSION="${OINC_VERSION:-v0.1.1}"
+          OINC_VERSION="${OINC_VERSION:-v0.1.2}"
           curl -L -o oinc "https://github.com/jasonmadigan/oinc/releases/download/${OINC_VERSION}/oinc-linux-amd64"
           chmod +x oinc
           sudo mv oinc /usr/local/bin/
@@ -43,7 +43,7 @@ jobs:
         run: yarn playwright install --with-deps chromium
 
       - name: Setup cluster
-        run: sudo ./e2e/setup.sh
+        run: ./e2e/setup.sh
 
       - name: Start plugin dev server
         run: yarn clean && yarn start &
@@ -75,4 +75,4 @@ jobs:
 
       - name: Teardown
         if: always()
-        run: sudo ./e2e/teardown.sh
+        run: ./e2e/teardown.sh

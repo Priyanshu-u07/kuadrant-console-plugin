@@ -147,6 +147,21 @@
     }
   },
   {
+    "type": "console.tab/horizontalNav",
+    "properties": {
+      "model": {
+        "group": "devportal.kuadrant.io",
+        "version": "v1alpha1",
+        "kind": "APIProduct"
+      },
+      "page": {
+        "name": "API Keys",
+        "href": "apikeys"
+      },
+      "component": { "$codeRef": "APIProductAPIKeysTab" }
+    }
+  },
+  {
     "type": "console.page/route",
     "properties": {
       "exact": true,
@@ -212,6 +227,46 @@
     "properties": {
       "path": "/kuadrant/apiproducts/all-namespaces",
       "component": { "$codeRef": "APIProductsListPage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/kuadrant/apikey-approvals/ns/:ns",
+      "component": { "$codeRef": "APIKeyApprovalPage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/kuadrant/apikey-approvals/all-namespaces",
+      "component": { "$codeRef": "APIKeyApprovalPage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/kuadrant/ns/:ns/apikeys/name/:name",
+      "component": { "$codeRef": "APIKeyDetailPage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/kuadrant/apikeys/ns/:ns",
+      "component": { "$codeRef": "MyAPIKeysPage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/kuadrant/apikeys/all-namespaces",
+      "component": { "$codeRef": "MyAPIKeysPage" }
     }
   },
   {
@@ -371,36 +426,6 @@
     }
   },
   {
-    "type": "console.tab/horizontalNav",
-    "properties": {
-      "model": {
-        "group": "devportal.kuadrant.io",
-        "version": "v1alpha1",
-        "kind": "APIProduct"
-      },
-      "page": {
-        "name": "Definition",
-        "href": "definition"
-      },
-      "component": { "$codeRef": "APIProductDefinitionTab" }
-    }
-  },
-  {
-    "type": "console.tab/horizontalNav",
-    "properties": {
-      "model": {
-        "group": "devportal.kuadrant.io",
-        "version": "v1alpha1",
-        "kind": "APIProduct"
-      },
-      "page": {
-        "name": "Policies",
-        "href": "policies"
-      },
-      "component": { "$codeRef": "APIProductPoliciesTab" }
-    }
-  },
-  {
     "type": "console.navigation/href",
     "properties": {
       "id": "kuadrant-policy-topology-admin",
@@ -409,6 +434,14 @@
       "namespaced": true,
       "perspective": "admin",
       "section": "kuadrant-section-admin"
+    }
+  },
+  {
+    "type": "console.navigation/section",
+    "properties": {
+      "id": "kuadrant-api-catalog-section-admin",
+      "name": "%plugin__kuadrant-console-plugin~Kuadrant API Catalog%",
+      "perspective": "admin"
     }
   },
   {
@@ -461,6 +494,58 @@
       "namespaced": true,
       "perspective": "dev",
       "section": "kuadrant-section-dev"
+    }
+  },
+  {
+    "type": "console.navigation/section",
+    "properties": {
+      "id": "kuadrant-api-catalog-section-dev",
+      "name": "%plugin__kuadrant-console-plugin~Kuadrant API Catalog%",
+      "perspective": "dev"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "kuadrant-apikey-approvals-dev",
+      "name": "%plugin__kuadrant-console-plugin~API Key Approvals%",
+      "href": "/kuadrant/apikey-approvals",
+      "namespaced": true,
+      "perspective": "dev",
+      "section": "kuadrant-api-catalog-section-dev"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "kuadrant-myapikeys-dev",
+      "name": "%plugin__kuadrant-console-plugin~My API Keys%",
+      "href": "/kuadrant/apikeys",
+      "namespaced": true,
+      "perspective": "dev",
+      "section": "kuadrant-api-catalog-section-dev"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "kuadrant-apikey-approvals-admin",
+      "name": "%plugin__kuadrant-console-plugin~API Key Approvals%",
+      "href": "/kuadrant/apikey-approvals",
+      "namespaced": true,
+      "perspective": "admin",
+      "section": "kuadrant-api-catalog-section-admin"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "kuadrant-myapikeys-admin",
+      "name": "%plugin__kuadrant-console-plugin~My API Keys%",
+      "href": "/kuadrant/apikeys",
+      "namespaced": true,
+      "perspective": "admin",
+      "section": "kuadrant-api-catalog-section-admin"
     }
   }
 ]
