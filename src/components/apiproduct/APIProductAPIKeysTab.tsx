@@ -36,14 +36,13 @@ import {
   Timestamp,
   ListPageBody,
   useAccessReview,
-  k8sCreate,
   consoleFetchJSON,
 } from '@openshift-console/dynamic-plugin-sdk';
 import { SearchIcon, EllipsisVIcon, InfoCircleIcon } from '@patternfly/react-icons';
 import { RESOURCES, OpenshiftUser, SelfSubjectReviewResponse } from '../../utils/resources';
-import { getModelFromResource, getResourceNameFromKind } from '../../utils/getModelFromResource';
-import { APIKeyRequest, APIKeyApproval } from '../apikey/types';
-import { getRequestStatus } from '../apikey/utils';
+import { getResourceNameFromKind } from '../../utils/getModelFromResource';
+import { APIKeyRequest } from '../apikey/types';
+import { getRequestStatus, handleAPIKeyApprovalOrDenial } from '../apikey/utils';
 import { APIKeyStatusBadge } from '../apikey/APIKeyStatusBadge';
 import ApprovalModal from '../apikey/ApprovalModal';
 import RejectionModal from '../apikey/RejectionModal';
@@ -278,28 +277,9 @@ const APIProductAPIKeysTab: React.FC = () => {
 
   const handleApprove = async (requests: APIKeyRequest[]) => {
     try {
-      const now = new Date().toISOString();
-
       for (const request of requests) {
-        const approval: APIKeyApproval = {
-          apiVersion: 'devportal.kuadrant.io/v1alpha1',
-          kind: 'APIKeyApproval',
-          metadata: {
-            name: `${request.metadata.name}-approval`,
-            namespace: request.metadata.namespace,
-          },
-          spec: {
-            apiKeyRequestRef: { name: request.metadata.name },
-            approved: true,
-            reviewedBy: currentUser,
-            reviewedAt: now,
-          },
-        };
-
-        const model = getModelFromResource(approval);
-        await k8sCreate({ model, data: approval });
+        await handleAPIKeyApprovalOrDenial(request, true, currentUser);
       }
-
       setApprovalModalRequests([]);
     } catch (error) {
       console.error('Failed to approve request:', error);
@@ -309,32 +289,12 @@ const APIProductAPIKeysTab: React.FC = () => {
 
   const handleReject = async (requests: APIKeyRequest[], reason?: string) => {
     try {
-      const now = new Date().toISOString();
-
       for (const request of requests) {
-        const approval: APIKeyApproval = {
-          apiVersion: 'devportal.kuadrant.io/v1alpha1',
-          kind: 'APIKeyApproval',
-          metadata: {
-            name: `${request.metadata.name}-rejection`,
-            namespace: request.metadata.namespace,
-          },
-          spec: {
-            apiKeyRequestRef: { name: request.metadata.name },
-            approved: false,
-            reviewedBy: currentUser,
-            reviewedAt: now,
-            reason: reason,
-          },
-        };
-
-        const model = getModelFromResource(approval);
-        await k8sCreate({ model, data: approval });
+        await handleAPIKeyApprovalOrDenial(request, false, currentUser, reason);
       }
-
       setRejectionModalRequests([]);
     } catch (error) {
-      console.error('Failed to reject request:', error);
+      console.error('Failed to deny request:', error);
       throw error;
     }
   };
@@ -415,7 +375,7 @@ const APIProductAPIKeysTab: React.FC = () => {
           <Timestamp timestamp={obj.metadata.creationTimestamp} />
         </TableData>
         <TableData id="actions" activeColumnIDs={activeColumnIDs}>
-          {isPending ? (
+          {isPending || status === 'Approved' ? (
             <Dropdown
               isOpen={isKebabOpen}
               onOpenChange={(isOpen) => setIsKebabOpen(isOpen)}
@@ -432,16 +392,18 @@ const APIProductAPIKeysTab: React.FC = () => {
               )}
             >
               <DropdownList>
-                <DropdownItem
-                  key="approve"
-                  onClick={() => {
-                    setIsKebabOpen(false);
-                    handleApproveClick(obj);
-                  }}
-                  isDisabled={canApproveLoading || !canApprove}
-                >
-                  {t('Approve')}
-                </DropdownItem>
+                {isPending && (
+                  <DropdownItem
+                    key="approve"
+                    onClick={() => {
+                      setIsKebabOpen(false);
+                      handleApproveClick(obj);
+                    }}
+                    isDisabled={canApproveLoading || !canApprove}
+                  >
+                    {t('Approve')}
+                  </DropdownItem>
+                )}
                 <DropdownItem
                   key="reject"
                   onClick={() => {
@@ -450,7 +412,7 @@ const APIProductAPIKeysTab: React.FC = () => {
                   }}
                   isDisabled={canApproveLoading || !canApprove}
                 >
-                  {t('Reject')}
+                  {t('Deny')}
                 </DropdownItem>
               </DropdownList>
             </Dropdown>

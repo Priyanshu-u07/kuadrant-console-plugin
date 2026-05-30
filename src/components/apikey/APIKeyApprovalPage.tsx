@@ -12,16 +12,13 @@ import {
   useK8sWatchResource,
   useAccessReview,
   consoleFetchJSON,
-  k8sCreate,
-  k8sGet,
-  k8sUpdate,
   NamespaceBar,
 } from '@openshift-console/dynamic-plugin-sdk';
 import { useTranslation } from 'react-i18next';
-import { RESOURCES } from '../../utils/resources';
-import { getModelFromResource } from '../../utils/getModelFromResource';
-import { APIKeyRequest, APIKeyApproval } from './types';
-import { getRequestStatus } from './utils';
+import { RESOURCES, OpenshiftUser, SelfSubjectReviewResponse } from '../../utils/resources';
+import { APIKeyRequest } from './types';
+import { APIProduct } from '../apiproduct/types';
+import { getRequestStatus, handleAPIKeyApprovalOrDenial } from './utils';
 import APIKeyApprovalToolbar, { FilterState } from './APIKeyApprovalToolbar';
 import APIKeyApprovalTable from './APIKeyApprovalTable';
 import ApprovalModal from './ApprovalModal';
@@ -43,12 +40,12 @@ const APIKeyApprovalPage: React.FC = () => {
   const [userLoaded, setUserLoaded] = React.useState(false);
   const [userError, setUserError] = React.useState(false);
 
-  const ns = activeNamespace === '#ALL_NS#' ? '' : activeNamespace;
+  const ns = activeNamespace === '#ALL_NS#' ? undefined : activeNamespace;
 
-  const [canReadRequests, canReadRequestsLoaded] = useAccessReview({
+  const [canList, canListLoading] = useAccessReview({
     group: RESOURCES.APIKeyRequest.gvk.group,
     resource: 'apikeyrequests',
-    verb: 'get',
+    verb: 'list',
     namespace: ns,
   });
 
@@ -59,40 +56,77 @@ const APIKeyApprovalPage: React.FC = () => {
     namespace: ns,
   });
 
+  const [canListProducts, canListProductsLoading] = useAccessReview({
+    group: RESOURCES.APIProduct.gvk.group,
+    resource: 'apiproducts',
+    verb: 'list',
+    namespace: ns,
+  });
+
   React.useEffect(() => {
-    consoleFetchJSON('/api/kubernetes/apis/user.openshift.io/v1/users/~')
-      .then((user: { metadata: { name: string } }) => {
-        setCurrentUser(user.metadata.name);
-        setUserLoaded(true);
-      })
-      .catch((err: unknown) => {
+    const fetchCurrentUser = async () => {
+      try {
+        // Try OpenShift User API first (OpenShift 4.x)
+        try {
+          const user = (await consoleFetchJSON(
+            '/api/kubernetes/apis/user.openshift.io/v1/users/~',
+          )) as OpenshiftUser;
+          if (user?.metadata?.name) {
+            setCurrentUser(user.metadata.name);
+            setUserLoaded(true);
+            return;
+          }
+        } catch (_openshiftError) {
+          // OpenShift User API not available, fall back to SelfSubjectReview
+        }
+
+        // Fallback: Try Kubernetes SelfSubjectReview (K8s 1.27+, MicroShift)
+        const response = (await consoleFetchJSON.post(
+          '/api/kubernetes/apis/authentication.k8s.io/v1/selfsubjectreviews',
+          {
+            apiVersion: 'authentication.k8s.io/v1',
+            kind: 'SelfSubjectReview',
+          },
+        )) as SelfSubjectReviewResponse;
+
+        const username = response?.status?.userInfo?.username;
+        if (username) {
+          setCurrentUser(username);
+          setUserLoaded(true);
+        } else {
+          throw new Error('Username not found in SelfSubjectReview response');
+        }
+      } catch (err: unknown) {
         console.error('Failed to get current user:', err);
         setUserError(true);
-      });
+        setUserLoaded(true);
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
 
-  const requestResource = React.useMemo(
-    () => ({
-      groupVersionKind: RESOURCES.APIKeyRequest.gvk,
-      isList: true,
-      namespace: activeNamespace === '#ALL_NS#' ? undefined : activeNamespace,
-    }),
-    [activeNamespace],
+  // Watch APIKeyRequests in the product's namespace (shadow resources)
+  // Only watch if user has permission
+  const [requests, requestsLoaded, requestsLoadError] = useK8sWatchResource<APIKeyRequest[]>(
+    canList && !canListLoading
+      ? {
+          groupVersionKind: RESOURCES.APIKeyRequest.gvk,
+          namespace: ns,
+          isList: true,
+        }
+      : null,
   );
 
-  const [requests, requestsLoaded, requestsError] =
-    useK8sWatchResource<APIKeyRequest[]>(requestResource);
-
-  const productResource = React.useMemo(
-    () => ({
-      groupVersionKind: RESOURCES.APIProduct.gvk,
-      isList: true,
-    }),
-    [],
+  const [products, productsLoaded] = useK8sWatchResource<APIProduct[]>(
+    canListProducts && !canListProductsLoading
+      ? {
+          groupVersionKind: RESOURCES.APIProduct.gvk,
+          namespace: ns,
+          isList: true,
+        }
+      : null,
   );
-
-  const [products, productsLoaded] =
-    useK8sWatchResource<{ metadata: { name: string; namespace: string } }[]>(productResource);
 
   const productOptions = React.useMemo(() => {
     if (!productsLoaded || !Array.isArray(products)) return [];
@@ -115,64 +149,23 @@ const APIKeyApprovalPage: React.FC = () => {
     });
   }, [requests, filters]);
 
-  const createApproval = async (
-    request: APIKeyRequest,
-    approved: boolean,
-    message?: string,
-  ): Promise<void> => {
-    const suffix = approved ? 'approval' : 'rejection';
-    const approval: APIKeyApproval = {
-      apiVersion: 'devportal.kuadrant.io/v1alpha1',
-      kind: 'APIKeyApproval',
-      metadata: {
-        name: `${request.metadata?.name}-${suffix}`,
-        namespace: request.metadata?.namespace,
-      },
-      spec: {
-        apiKeyRequestRef: { name: request.metadata?.name || '' },
-        approved,
-        reviewedBy: currentUser,
-        reviewedAt: new Date().toISOString(),
-        reason: approved ? 'ApprovedByOwner' : 'RejectedByOwner',
-        message: message || (approved ? 'Approved' : 'Rejected'),
-      },
-    };
-    const model = getModelFromResource(approval);
-    try {
-      await k8sCreate({ model, data: approval });
-    } catch (err: unknown) {
-      if ((err as { code?: number })?.code === 409) {
-        const existing = await k8sGet<APIKeyApproval>({
-          model,
-          name: approval.metadata.name,
-          ns: approval.metadata.namespace,
-        });
-        await k8sUpdate({
-          model,
-          data: {
-            ...approval,
-            metadata: { ...approval.metadata, resourceVersion: existing.metadata.resourceVersion },
-          },
-        });
-      } else {
-        throw err;
-      }
-    }
-  };
-
   const handleApprove = async (requestsToApprove: APIKeyRequest[]) => {
     const results = await Promise.allSettled(
-      requestsToApprove.map((req) => createApproval(req, true)),
+      requestsToApprove.map((req) => handleAPIKeyApprovalOrDenial(req, true, currentUser)),
     );
     const succeeded = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed > 0) {
-      setToastMessage(
-        t('{{succeeded}} API key(s) approved, {{failed}} failed', { succeeded, failed }),
-      );
+      const successText = succeeded === 1 ? '1 API key' : `${succeeded} API keys`;
+      const failText = failed === 1 ? '1 failed' : `${failed} failed`;
+      setToastMessage(t('{{successText}} approved, {{failText}}', { successText, failText }));
       setToastVariant('danger');
     } else {
-      setToastMessage(t('{{count}} API key(s) approved successfully', { count: succeeded }));
+      setToastMessage(
+        succeeded === 1
+          ? t('API key approved successfully')
+          : t('{{count}} API keys approved successfully', { count: succeeded }),
+      );
       setToastVariant('success');
     }
     setSelectedRequests(new Set());
@@ -181,17 +174,21 @@ const APIKeyApprovalPage: React.FC = () => {
 
   const handleReject = async (requestsToReject: APIKeyRequest[], reason?: string) => {
     const results = await Promise.allSettled(
-      requestsToReject.map((req) => createApproval(req, false, reason)),
+      requestsToReject.map((req) => handleAPIKeyApprovalOrDenial(req, false, currentUser, reason)),
     );
     const succeeded = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed > 0) {
-      setToastMessage(
-        t('{{succeeded}} API key(s) rejected, {{failed}} failed', { succeeded, failed }),
-      );
+      const successText = succeeded === 1 ? '1 API key' : `${succeeded} API keys`;
+      const failText = failed === 1 ? '1 failed' : `${failed} failed`;
+      setToastMessage(t('{{successText}} denied, {{failText}}', { successText, failText }));
       setToastVariant('danger');
     } else {
-      setToastMessage(t('{{count}} API key(s) rejected', { count: succeeded }));
+      setToastMessage(
+        succeeded === 1
+          ? t('API key denied successfully')
+          : t('{{count}} API keys denied successfully', { count: succeeded }),
+      );
       setToastVariant('success');
     }
     setSelectedRequests(new Set());
@@ -228,7 +225,23 @@ const APIKeyApprovalPage: React.FC = () => {
     setRejectionModalRequests(toReject);
   };
 
-  if (canReadRequestsLoaded && canReadRequests === false) {
+  if (canListLoading || canListProductsLoading) {
+    return (
+      <>
+        <NamespaceBar />
+        <PageSection hasBodyWrapper={false}>
+          <EmptyState>
+            <Spinner size="xl" />
+            <Title headingLevel="h2" size="lg">
+              {t('Loading...')}
+            </Title>
+          </EmptyState>
+        </PageSection>
+      </>
+    );
+  }
+
+  if (!canListLoading && canList === false) {
     return (
       <>
         <NamespaceBar />
@@ -241,7 +254,7 @@ const APIKeyApprovalPage: React.FC = () => {
     );
   }
 
-  if (!requestsLoaded) {
+  if (!requestsLoaded && canList) {
     return (
       <>
         <NamespaceBar />
@@ -257,13 +270,13 @@ const APIKeyApprovalPage: React.FC = () => {
     );
   }
 
-  if (requestsError) {
+  if (requestsLoadError) {
     return (
       <>
         <NamespaceBar />
         <PageSection hasBodyWrapper={false}>
           <Alert variant="danger" title={t('Error loading API key requests')}>
-            {String(requestsError)}
+            {String(requestsLoadError)}
           </Alert>
         </PageSection>
       </>
@@ -337,6 +350,7 @@ const APIKeyApprovalPage: React.FC = () => {
           onReject={(req) => setRejectionModalRequests([req])}
           canApprove={canApprove}
           canApproveLoading={canApproveLoading}
+          products={products || []}
         />
       </PageSection>
 
