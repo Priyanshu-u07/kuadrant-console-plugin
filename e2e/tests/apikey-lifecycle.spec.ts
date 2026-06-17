@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
+import { execSync } from 'child_process';
 import { TEST_NAMESPACE, dismissConsoleTour } from './helpers';
 
 /**
@@ -19,10 +20,10 @@ import { TEST_NAMESPACE, dismissConsoleTour } from './helpers';
  * 3. Request a new API key for payment-api
  * 4. Wait for automatic approval and secret creation
  * 5. Reveal the API key (warning modal → reveal modal with actual key)
- * 6. Verify "Already viewed" status in list
+ * 6. Verify reveal button is still clickable after viewing
  * 7. Navigate to API key details page
  * 8. Verify usage examples are shown
- * 9. Verify "Already viewed" status on details page
+ * 9. Verify reveal button is visible on details page
  * 10. Delete API key from details page
  * 11. Verify redirect to list and key is removed
  */
@@ -56,6 +57,11 @@ test.describe('API Key Lifecycle', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await dismissConsoleTour(page);
+  });
+
+  test.afterEach(async () => {
+    // Clean up any APIKey resources created during the test
+    execSync(`kubectl delete apikey ${testAPIKeyName} -n ${TEST_NAMESPACE} --ignore-not-found=true`, { stdio: 'inherit' });
   });
 
   test('should complete full API key lifecycle: request, reveal, and delete', async ({ page }) => {
@@ -162,7 +168,7 @@ test.describe('API Key Lifecycle', () => {
       timeout: 10000,
     });
     await expect(
-      page.locator('text=The API Key can only be viewed once'),
+      page.locator('text=You are about to reveal the API key'),
     ).toBeVisible();
 
     const revealConfirmButton = page.locator('button:has-text("Reveal")').last();
@@ -172,22 +178,14 @@ test.describe('API Key Lifecycle', () => {
     // Verify clipboard copy component is visible (indicates secret was fetched)
     await expect(page.locator('.pf-v6-c-clipboard-copy')).toBeVisible({ timeout: 10000 });
 
-    // Verify the confirmation checkbox
-    const confirmCheckbox = page.locator('#confirm-copied');
-    await expect(confirmCheckbox).toBeVisible();
-
-    // Check the confirmation checkbox
-    await confirmCheckbox.click();
-
     // Close the reveal modal
     const closeButton = page.locator('button:has-text("Close")').last();
     await expect(closeButton).toBeEnabled();
     await closeButton.click();
 
-    // Step 9: Verify "Already viewed" status appears in the list
-    // The reveal button should now show "Already viewed"
-    const alreadyViewedIndicator = apiKeyRow.locator('text=Already viewed');
-    await expect(alreadyViewedIndicator).toBeVisible({ timeout: 10000 });
+    // Step 9: Verify reveal button is still clickable after viewing
+    // The reveal button should remain visible
+    await expect(revealButton).toBeVisible({ timeout: 10000 });
 
     // Step 10: Navigate to API key details page
     const apiKeyNameLink = apiKeyRow.locator(`a:has-text("${testAPIKeyName}")`);
@@ -206,9 +204,9 @@ test.describe('API Key Lifecycle', () => {
       timeout: 10000,
     });
 
-    // Step 12: Verify API key shows "Already viewed" on details page
-    const detailsAlreadyViewed = page.locator('text=Already viewed');
-    await expect(detailsAlreadyViewed).toBeVisible({ timeout: 5000 });
+    // Step 12: Verify reveal button is visible on details page
+    const detailsRevealButton = page.locator('[aria-label="Reveal API key"]');
+    await expect(detailsRevealButton).toBeVisible({ timeout: 5000 });
 
     // Step 13: Delete the API key from details page
     const deleteButton = page.locator('button:has-text("Delete")').first();

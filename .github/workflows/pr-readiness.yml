@@ -1,0 +1,109 @@
+# NOTE:
+# We intentionally use pull_request_target to allow commenting on fork PRs.
+# This workflow NEVER checks out or executes PR code.
+# It only reads commit metadata via the GitHub API.
+name: PR Readiness Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  pr-readiness:
+    name: Review Readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for fixup/squash commits
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.issue.number;
+            const COMMENT_MARKER = "<!-- pr-readiness-check -->";
+            const baseBranch = context.payload.pull_request.base.ref;
+
+            // Fetch all commits in the PR (paginated)
+            const commits = await github.paginate(
+              github.rest.pulls.listCommits,
+              { owner, repo, pull_number }
+            );
+
+            const issues = [];
+
+            // Detect fixup! and squash! commits
+            const fixupCommits = [];
+            for (const c of commits) {
+              const firstLine = c.commit.message.split("\n")[0].trim();
+              const sha = c.sha.substring(0, 7);
+              const commitLink = `[\`${sha}\`](https://github.com/${owner}/${repo}/commit/${c.sha})`;
+
+              if (firstLine.startsWith("fixup!") || firstLine.startsWith("squash!")) {
+                fixupCommits.push(commitLink);
+              }
+            }
+
+            if (fixupCommits.length > 0) {
+              const pl = fixupCommits.length === 1 ? "commit" : "commits";
+              issues.push(
+                `- **Fixup/squash ${pl} detected:** ${fixupCommits.join(", ")}\n` +
+                `  Please squash before merging: \`git rebase -i --autosquash origin/${baseBranch}\``
+              );
+            }
+
+            // Build the comment body
+            let body;
+            if (issues.length > 0) {
+              body = [
+                COMMENT_MARKER,
+                "# PR Readiness Check",
+                "",
+                "## ❌ This PR is not ready for review.",
+                "",
+                "**Issues found:**",
+                "",
+                ...issues,
+                "",
+                "---",
+                "**Please fix the issues above and push again.**",
+              ].join("\n");
+            } else {
+              body = [
+                COMMENT_MARKER,
+                "# PR Readiness Check",
+                "",
+                "## ✅ All checks passed. This PR is ready for review!",
+                "",
+                "Keep up the good work! 🚀",
+              ].join("\n");
+            }
+
+            // Find existing bot comment to update (no comment spam)
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: pull_number }
+            );
+            const existingComment = comments.find(
+              (comment) => comment.body && comment.body.includes(COMMENT_MARKER)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pull_number,
+                body,
+              });
+            }
+
+
