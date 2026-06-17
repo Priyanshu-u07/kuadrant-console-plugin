@@ -17,7 +17,7 @@ jobs:
     name: Review Readiness
     runs-on: ubuntu-latest
     steps:
-      - name: Check for fixup/squash commits
+      - name: PR readiness checks
         uses: actions/github-script@v7
         with:
           script: |
@@ -34,7 +34,7 @@ jobs:
 
             const issues = [];
 
-            // Detect fixup! and squash! commits
+            // Detect fixup! and squash! commits 
             const fixupCommits = [];
             for (const c of commits) {
               const firstLine = c.commit.message.split("\n")[0].trim();
@@ -68,16 +68,19 @@ jobs:
                 ...issues,
                 "",
                 "---",
-                "**Please fix the issues above and push again.**",
+                "**Please address the issues above and push your changes again.🔧**",
               ].join("\n");
             } else {
               body = [
                 COMMENT_MARKER,
                 "# PR Readiness Check",
                 "",
-                "## ✅ All checks passed. This PR is ready for review!",
+                "## ✅ All basic checks passed.",
                 "",
-                "Keep up the good work! 🚀",
+                "- All commits are DCO signed off.",
+                "- No fixup/squash commits detected.",
+                "",
+                "**Keep up the good work! 👍**",
               ].join("\n");
             }
 
@@ -106,4 +109,7 @@ jobs:
               });
             }
 
-
+            // Fail the CI check if any issues were found
+            if (issues.length > 0) {
+              core.setFailed("PR readiness checks failed. See the comment on the PR for details.");
+            }
