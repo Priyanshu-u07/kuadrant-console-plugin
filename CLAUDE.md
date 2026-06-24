@@ -27,7 +27,6 @@ kuadrant-console-plugin/
 ├── charts/                # Helm chart for deployment
 ├── locales/               # i18n translation files
 ├── config/
-│   ├── crd/              # Custom Resource Definitions
 │   └── rbac/             # RBAC role definitions
 ├── e2e/                   # End-to-end Playwright tests
 ├── docs/                  # Documentation and images
@@ -57,8 +56,10 @@ The plugin manages these Custom Resource Definitions (CRDs):
 
 ### API Management Resources
 7. **PlanPolicy** (`extensions.kuadrant.io/v1alpha1`) - Rate limiting plans with tiers
-8. **APIProduct** (`extensions.kuadrant.io/v1alpha1`) - Published API catalog entries
-9. **APIKeyRequest** (`extensions.kuadrant.io/v1alpha1`) - Consumer requests for API access
+8. **APIProduct** (`devportal.kuadrant.io/v1alpha1`) - Published API catalog entries
+9. **APIKeyRequest** (`devportal.kuadrant.io/v1alpha1`) - Consumer requests for API access
+10. **APIKey** (`devportal.kuadrant.io/v1alpha1`) - API key credentials for consumers
+11. **APIKeyApproval** (`devportal.kuadrant.io/v1alpha1`) - Approval records for API key requests
 
 ## Common Patterns
 
