@@ -116,7 +116,7 @@
     }
   },
   "dependencies": {
-    "@babel/core": "^7.25.2",
+    "@babel/core": "^7.29.6",
     "@babel/preset-env": "^7.25.3",
     "@babel/preset-react": "^7.24.7",
     "@patternfly/react-code-editor": "^5.4.0",
@@ -127,7 +127,7 @@
     "graphlib-dot": "^0.6.4",
     "i18next": "^25.8.0",
     "i18next-parser": "^9.0.1",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.2.0",
     "pluralize": "^8.0.0",
     "swagger-ui-react": "5.10.5"
   },
